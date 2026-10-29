@@ -1,22 +1,13 @@
-# AI usage
-
-Keep all three headings exactly as they are. If this file is missing or any heading is
-missing, the grader stops and gives 0 ("AI_USAGE.md missing or incomplete"). The content
-is not scored, but your Track Mentor reads it and the W8 defence can ask about it.
-
 ## Tools
-
-<!-- Which tools you used (ChatGPT, Copilot, Claude, Cursor, none...) and for which parts. -->
+I used Gemini (AI assistant) to help me structure the project, understand the requirements step-by-step, set up the virtual environment, and write the boilerplate code for the FastAPI endpoints and error handlers.
 
 ## What AI got wrong
-
-<!-- At least one thing an assistant got wrong that you changed, and how you noticed
-(a test failed, the docs said otherwise, you ran it). -->
+Initially, when organizing the API endpoints in `app/api.py`, there was a slight mix-up with the decorators' order, which caused the `POST /v1/parcels` endpoint to expect a `parcel_id` path parameter intended for the `GET` endpoint. We fixed this by correctly reordering the route functions and ensuring each decorator was directly above its corresponding function.
 
 ## In my own words
 
-<!-- Answer without AI, one or two sentences each. -->
+**Why does `listParcels` need a cursor rather than an offset?**
+Offset pagination skips a fixed number of items. If parcels are changing states while a user is paginating, the list's order shifts, causing offset pagination to miss items or show duplicates. A cursor acts like a bookmark (pointing to a specific item ID), ensuring we always resume from the exact right place regardless of state changes.
 
-1. Why does `listParcels` need a cursor rather than an offset?
-
-2. Which of your four operations would break the courier app if you renamed one field, and who would have to approve that change?
+**Which of your four operations would break the courier app if you renamed one field, and who would have to approve that change?**
+Renaming a field would break the `POST /v1/parcels` (createParcel) or `GET /v1/parcels` (listParcels) operations, as the courier app expects a strict JSON contract. Such a breaking change to the API contract would have to be approved by Dina El-Sherbiny (Head of Fraud & Risk) and likely the merchant integration team before deployment.
