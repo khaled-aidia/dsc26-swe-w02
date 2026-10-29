@@ -179,19 +179,11 @@ def create_app() -> FastAPI:
                     extra_kwargs={"errors": [{"loc": ["query", "state"], "msg": "unknown state"}]}
                 )
 
-        all_parcels = list(app.state.parcels.values())
-        start_index = 0
-        
+        decoded_id = None
         if cursor is not None:
             try:
                 decoded_id = base64.b64decode(cursor.encode("utf-8")).decode("utf-8")
-                found = False
-                for i, p in enumerate(all_parcels):
-                    if p.id == decoded_id:
-                        start_index = i + 1  
-                        found = True
-                        break
-                if not found:
+                if decoded_id not in app.state.parcels:
                     raise ValueError("Cursor item not found")
             except Exception:
                 return problem_exception_handler(
@@ -202,14 +194,24 @@ def create_app() -> FastAPI:
         items = []
         next_cursor = None
         
-        for i in range(start_index, len(all_parcels)):
-            p = all_parcels[i]
+        # استخدام Iterator لتخطي العناصر بدون استخدام أي (Indices) أو أرقام
+        parcel_iterator = iter(app.state.parcels.values())
+        
+        if decoded_id is not None:
+            # تسريع الـ Iterator لحد ما نوصل للـ Cursor ونتخطاه
+            for p in parcel_iterator:
+                if p.id == decoded_id:
+                    break
+                    
+        # تجميع الطرود المطلوبة
+        for p in parcel_iterator:
             if state_enum is None or p.state == state_enum:
                 items.append(p)
                 if len(items) == limit:
+                    # نختبر هل في طرود تانية بعد ده؟
                     has_more = False
-                    for j in range(i + 1, len(all_parcels)):
-                        if state_enum is None or all_parcels[j].state == state_enum:
+                    for next_p in parcel_iterator:
+                        if state_enum is None or next_p.state == state_enum:
                             has_more = True
                             break
                     
