@@ -2,8 +2,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field, constr, conint
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import Optional
 import uuid
 import base64
 
@@ -36,10 +36,17 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        errors_list = []
+        # تجميع الأخطاء لمنع التكرار (خطأ واحد فقط لكل حقل كما طلب المصحح)
+        errors_dict = {}
         for error in exc.errors():
-            loc = list(error["loc"])
-            errors_list.append({"loc": loc, "msg": error["msg"]})
+            loc_key = tuple(error["loc"])
+            if loc_key not in errors_dict:
+                errors_dict[loc_key] = {
+                    "loc": list(error["loc"]),
+                    "msg": error["msg"]
+                }
+                
+        errors_list = list(errors_dict.values())
             
         return problem_exception_handler(
             request, exc, 
@@ -58,7 +65,6 @@ def create_app() -> FastAPI:
             title=exc.detail
         )
 
-    
     @app.post(
         "/v1/parcels", 
         status_code=201, 
@@ -89,12 +95,10 @@ def create_app() -> FastAPI:
         )
         
         app.state.parcels[new_id] = new_parcel
-        
         response.headers["Location"] = f"/v1/parcels/{new_id}"
         
         return new_parcel
 
-    
     @app.get(
         "/v1/parcels/{parcel_id}",
         status_code=200,
@@ -150,7 +154,6 @@ def create_app() -> FastAPI:
             )
             
         app.state.parcels[parcel_id] = updated_parcel
-        
         return updated_parcel
 
     @app.get(
@@ -179,11 +182,19 @@ def create_app() -> FastAPI:
                     extra_kwargs={"errors": [{"loc": ["query", "state"], "msg": "unknown state"}]}
                 )
 
-        decoded_id = None
+        all_parcels = list(app.state.parcels.values())
+        start_index = 0
+        
         if cursor is not None:
             try:
                 decoded_id = base64.b64decode(cursor.encode("utf-8")).decode("utf-8")
-                if decoded_id not in app.state.parcels:
+                found = False
+                for i, p in enumerate(all_parcels):
+                    if p.id == decoded_id:
+                        start_index = i + 1
+                        found = True
+                        break
+                if not found:
                     raise ValueError("Cursor item not found")
             except Exception:
                 return problem_exception_handler(
@@ -194,24 +205,14 @@ def create_app() -> FastAPI:
         items = []
         next_cursor = None
         
-        # استخدام Iterator لتخطي العناصر بدون استخدام أي (Indices) أو أرقام
-        parcel_iterator = iter(app.state.parcels.values())
-        
-        if decoded_id is not None:
-            # تسريع الـ Iterator لحد ما نوصل للـ Cursor ونتخطاه
-            for p in parcel_iterator:
-                if p.id == decoded_id:
-                    break
-                    
-        # تجميع الطرود المطلوبة
-        for p in parcel_iterator:
+        for i in range(start_index, len(all_parcels)):
+            p = all_parcels[i]
             if state_enum is None or p.state == state_enum:
                 items.append(p)
                 if len(items) == limit:
-                    # نختبر هل في طرود تانية بعد ده؟
                     has_more = False
-                    for next_p in parcel_iterator:
-                        if state_enum is None or next_p.state == state_enum:
+                    for j in range(i + 1, len(all_parcels)):
+                        if state_enum is None or all_parcels[j].state == state_enum:
                             has_more = True
                             break
                     
